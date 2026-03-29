@@ -1,0 +1,51 @@
+name: Android Build
+
+on: [push, pull_request]
+
+jobs:
+  android-mre:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build python3 git
+
+      - name: Setup NDK
+        uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r27c
+
+      - name: Install depot_tools
+        run: |
+          git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
+          echo "$GITHUB_WORKSPACE/depot_tools" >> $GITHUB_PATH
+
+      - name: Fetch Dawn Source
+        run: |
+          git clone https://dawn.googlesource.com/dawn dawn
+          cd dawn
+          cp scripts/standalone.gclient .gclient
+          gclient sync
+
+      - name: CMake Configure
+        run: |
+          cmake -B build -G Ninja -Wno-dev \
+            -DCMAKE_TOOLCHAIN_FILE=${{ steps.setup-ndk.outputs.ndk-path }}/build/cmake/android.toolchain.cmake \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=android-30 \
+            -DDAWN_ENABLE_VULKAN=ON \
+            -DDAWN_ENABLE_OPENGLES=ON \
+            -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --target mre
+
+      - name: Upload Binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: mre-android
+          path: build/mre
